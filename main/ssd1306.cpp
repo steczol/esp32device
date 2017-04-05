@@ -24,6 +24,7 @@ OLED::OLED(gpio_num_t scl, gpio_num_t sda, ssd1306_panel_type_t type) {
 	i2c = new I2C(scl, sda);
 	this->type = type;
 	this->address = 0x78;
+	//this->address = 0x3c;
 
 	switch (type) {
 	case SSD1306_128x64:
