@@ -9,8 +9,13 @@
 #include <string>
 #include <sstream>
 #include <iostream>
-using namespace std;
 
+#include <freertos/queue.h>
+#include "c_timeutils.h"
+#include "sdkconfig.h"
+
+using namespace std;
+/*
 OLED oled = OLED(GPIO_NUM_19, GPIO_NUM_22, SSD1306_128x64);
 
 void myTask(void *pvParameters) {
@@ -55,11 +60,55 @@ void myTask(void *pvParameters) {
 
 }
 
+*/
+
+static char tag[] = "test_intr";
+static QueueHandle_t q1;
+
+//#define TEST_GPIO (25)
+//#define TEST_GPIO "GPIO_NUM_25";
+static void handler(void *args) {
+	gpio_num_t gpio;
+	//gpio = TEST_GPIO;
+	gpio = GPIO_NUM_25;
+	xQueueSendToBackFromISR(q1, &gpio, NULL);
+}
+
+void test1_task(void *ignore) {
+	struct timeval lastPress;
+	ESP_LOGD(tag, ">> test1_task");
+	gettimeofday(&lastPress, NULL);
+	gpio_num_t gpio;
+	q1 = xQueueCreate(10, sizeof(gpio_num_t));
+	gpio_config_t gpioConfig;
+	gpioConfig.pin_bit_mask = GPIO_SEL_25;
+	gpioConfig.mode = GPIO_MODE_INPUT;
+	gpioConfig.pull_up_en = GPIO_PULLUP_DISABLE;
+	gpioConfig.pull_down_en = GPIO_PULLDOWN_ENABLE;
+	gpioConfig.intr_type = GPIO_INTR_POSEDGE;
+	gpio_config(&gpioConfig);
+	gpio_install_isr_service(0);
+	gpio_isr_handler_add(GPIO_NUM_25, handler, NULL);
+	while(1) {
+		ESP_LOGD(tag, "Waiting on queue");
+		BaseType_t rc = xQueueReceive(q1, &gpio, portMAX_DELAY);
+		ESP_LOGD(tag, "Woke from queue wait: %d", rc);
+		struct timeval now;
+		gettimeofday(&now, NULL);
+		if (timeval_durationBeforeNow(&lastPress) > 100) {
+			ESP_LOGD(tag, "Registered a click");
+		}
+		lastPress = now;
+	}
+	vTaskDelete(NULL);
+}
+
 #ifdef __cplusplus
 extern "C" {
 #endif
 void app_main() {
 
+	/*
 	oled = OLED(GPIO_NUM_19, GPIO_NUM_22, SSD1306_128x64);
 	if (oled.init()) {
 		ESP_LOGI("OLED", "oled inited");
@@ -80,6 +129,11 @@ void app_main() {
 	} else {
 		ESP_LOGE("OLED", "oled init failed");
 	}
+	*/
+	ESP_LOGI("GPIO", "first run");
+	//xTaskCreatePinnedToCore(&test1_task, "test1task", 2048, NULL, 5, NULL, 1);
+	test1_task(NULL);
+
 }
 #ifdef __cplusplus
 }
