@@ -5,136 +5,142 @@
 #include "driver/adc.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
-#include <cstdio>
+//#include <cstdio>
 #include <string>
 #include <sstream>
 #include <iostream>
 
-#include <freertos/queue.h>
+#include <stdlib.h>
+#include "freertos/queue.h"
+#include <stdio.h>
 #include "c_timeutils.h"
-#include "sdkconfig.h"
+
+
+#define GPIO_BUTTON_IN_1	23
+#define GPIO_BUTTON_IN_2	18
+#define GPIO_BUTTON_IN_3	12
+#define GPIO_BUTTON_IN_4	21
+
+#define GPIO_BUTTON_I2C_SCL 19
+#define GPIO_BUTTON_I2C_SDA 22
+
+#define GPIO_INPUT_PIN_SEL 	((1<<GPIO_BUTTON_IN_1) | (1<<GPIO_BUTTON_IN_2) | (1<<GPIO_BUTTON_IN_3) | (1<<GPIO_BUTTON_IN_4))
+#define GPIO_OUTPUT_PIN_SEL  ((1<<GPIO_BUTTON_I2C_SCL) | (1<<GPIO_BUTTON_I2C_SDA))
+
+#define ESP_INTR_FLAG_DEFAULT 0
+
 
 using namespace std;
-/*
+static const gpio_num_t gpioButton1 = GPIO_NUM_23;
+static const gpio_num_t gpioButton2 = GPIO_NUM_18;
+static const gpio_num_t gpioButton3 = GPIO_NUM_12;
+static const gpio_num_t gpioButton4 = GPIO_NUM_21;
+
+static char button_tag[] = "Button";
+static QueueHandle_t q1;
 OLED oled = OLED(GPIO_NUM_19, GPIO_NUM_22, SSD1306_128x64);
 
-void myTask(void *pvParameters) {
-	adc1_config_width(ADC_WIDTH_12Bit);
-	adc1_config_channel_atten(ADC1_CHANNEL_4, ADC_ATTEN_0db);
-
+static void showOnDisplay(const char* text){
 	ostringstream os;
-//	char *data = (char*) malloc(32);
-	uint16_t graph[128];
-	memset(graph, 0, sizeof(graph));
-//	for(uint8_t i=0;i<64;i++){
-//		oled.clear();
-//		oled.draw_hline(0, i, 100, WHITE);
-//		sprintf(data,"%d",i);
-//		oled.draw_string(105, 10, string(data), BLACK, WHITE);
-//		oled.refresh(false);
-//		vTaskDelay(1000 / portTICK_PERIOD_MS);
-//	}
-	while (1) {
-		os.str("");
-		os << "ADC_CH4(GPIO32):" << adc1_get_voltage(ADC1_CHANNEL_4);
-		for (int i = 0; i < 127; i++) {
-			graph[i] = graph[i + 1];
-		}
-		graph[127] = adc1_get_voltage(ADC1_CHANNEL_4);
-		oled.clear();
-//		sprintf(data, "01");
-//		oled.select_font(2);
-//		oled.draw_string(0, 0, string(data), WHITE, BLACK);
-//		sprintf(data, ":%d", graph[127]);
-		oled.select_font(1);
-		oled.draw_string(0, 0, os.str(), WHITE, BLACK);
-//		oled.draw_string(33, 4, string(data), WHITE, BLACK);
-		graph[127] = graph[127] * 48 / 4096;
-		for (uint8_t i = 0; i < 128; i++) {
-			oled.draw_pixel(i, 63 - graph[i], WHITE);
-		}
-		oled.draw_pixel(127, 63 - graph[127], WHITE);
-		oled.refresh(true);
-		vTaskDelay(500 / portTICK_PERIOD_MS);
+			os.str("");
+			os << text << endl;
+			oled.clear();
+			oled.select_font(1);
+			oled.draw_string(10, 10, os.str(), WHITE, BLACK);
+			oled.refresh(true);
+}
+
+static void handler(void *args) {
+	uint32_t gpio_num = (uint32_t) args;
+	if (gpio_num == GPIO_BUTTON_IN_1){
+		ESP_LOGI(button_tag, "button 1 pressed");
+		showOnDisplay("1");
+	} else if (gpio_num == GPIO_BUTTON_IN_2){
+		ESP_LOGI(button_tag, "button 2 pressed");
+		showOnDisplay("2");
+	} else if (gpio_num == GPIO_BUTTON_IN_3){
+		ESP_LOGI(button_tag, "button 3 pressed");
+		showOnDisplay("3");
+	} else if (gpio_num == GPIO_BUTTON_IN_4){
+		ESP_LOGI(button_tag, "button 4 pressed");
+		showOnDisplay("4");
+	} else {
+		ESP_LOGI(button_tag, "button ? pressed");
+		showOnDisplay("button ? pressed");
 	}
 
+	xQueueSendToBackFromISR(q1, &gpio_num, NULL);
 }
 
-*/
 
-static char tag[] = "test_intr";
-static QueueHandle_t q1;
-
-//#define TEST_GPIO (25)
-//#define TEST_GPIO "GPIO_NUM_25";
-static void handler(void *args) {
-	gpio_num_t gpio;
-	//gpio = TEST_GPIO;
-	gpio = GPIO_NUM_25;
-	xQueueSendToBackFromISR(q1, &gpio, NULL);
-}
-
-void test1_task(void *ignore) {
+void buttonsHandler(void *ignore){
 	struct timeval lastPress;
-	ESP_LOGD(tag, ">> test1_task");
+	ESP_LOGD(button_tag, ">> buttonsHandler started");
 	gettimeofday(&lastPress, NULL);
 	gpio_num_t gpio;
 	q1 = xQueueCreate(10, sizeof(gpio_num_t));
-	gpio_config_t gpioConfig;
-	gpioConfig.pin_bit_mask = GPIO_SEL_25;
-	gpioConfig.mode = GPIO_MODE_INPUT;
-	gpioConfig.pull_up_en = GPIO_PULLUP_DISABLE;
-	gpioConfig.pull_down_en = GPIO_PULLDOWN_ENABLE;
-	gpioConfig.intr_type = GPIO_INTR_POSEDGE;
+	gpio_config_t gpioConfig =
+	{
+		.pin_bit_mask = GPIO_INPUT_PIN_SEL,
+		.mode = GPIO_MODE_INPUT,
+		.pull_up_en = GPIO_PULLUP_DISABLE,
+		.pull_down_en = GPIO_PULLDOWN_ENABLE,
+		.intr_type = GPIO_INTR_POSEDGE,
+	};
 	gpio_config(&gpioConfig);
 	gpio_install_isr_service(0);
-	gpio_isr_handler_add(GPIO_NUM_25, handler, NULL);
+
+	gpio_isr_handler_add(gpioButton1, handler, (void*) GPIO_BUTTON_IN_1);
+	gpio_isr_handler_add(gpioButton2, handler, (void*) GPIO_BUTTON_IN_2);
+	gpio_isr_handler_add(gpioButton3, handler, (void*) GPIO_BUTTON_IN_3);
+	gpio_isr_handler_add(gpioButton4, handler, (void*) GPIO_BUTTON_IN_4);
 	while(1) {
-		ESP_LOGD(tag, "Waiting on queue");
-		BaseType_t rc = xQueueReceive(q1, &gpio, portMAX_DELAY);
-		ESP_LOGD(tag, "Woke from queue wait: %d", rc);
+		xQueueReceive(q1, &gpio, portMAX_DELAY);
 		struct timeval now;
 		gettimeofday(&now, NULL);
-		if (timeval_durationBeforeNow(&lastPress) > 100) {
-			ESP_LOGD(tag, "Registered a click");
+		if (timeval_durationBeforeNow(&lastPress) > 100)
+		{
+			ESP_LOGI(button_tag, "Registered a click");
 		}
 		lastPress = now;
 	}
 	vTaskDelete(NULL);
 }
 
+
+void myTask(void *pvParameters) {
+	adc1_config_width(ADC_WIDTH_12Bit);
+	adc1_config_channel_atten(ADC1_CHANNEL_4, ADC_ATTEN_0db);
+
+	ostringstream os;
+	uint16_t graph[128];
+	memset(graph, 0, sizeof(graph));
+}
+
+static xQueueHandle gpio_evt_queue = NULL;
+
+void IRAM_ATTR gpio_isr_handler(void* arg)
+	{
+	    uint32_t gpio_num = (uint32_t) arg;
+	    xQueueSendFromISR(gpio_evt_queue, &gpio_num, NULL);
+	}
+
+
 #ifdef __cplusplus
 extern "C" {
 #endif
-void app_main() {
 
-	/*
-	oled = OLED(GPIO_NUM_19, GPIO_NUM_22, SSD1306_128x64);
+void app_main(){
 	if (oled.init()) {
 		ESP_LOGI("OLED", "oled inited");
-//		oled.draw_rectangle(10, 30, 20, 20, WHITE);
-//		oled.select_font(0);
-//		//deprecated conversion from string constant to 'char*'
-//		oled.draw_string(0, 0, "glcd_5x7_font_info", WHITE, BLACK);
-//		ESP_LOGI("OLED", "String length:%d",
-//				oled.measure_string("glcd_5x7_font_info"));
-//		oled.select_font(1);
-//		oled.draw_string(0, 18, "tahoma_8pt_font_info", WHITE, BLACK);
-//		ESP_LOGI("OLED", "String length:%d",
-//				oled.measure_string("tahoma_8pt_font_info"));
-//		oled.draw_string(55, 30, "Hello ESP32!", WHITE, BLACK);
-//		oled.refresh(true);
-//		vTaskDelay(3000 / portTICK_PERIOD_MS);
-		xTaskCreatePinnedToCore(&myTask, "adctask", 2048, NULL, 5, NULL, 1);
+		ESP_LOGI("TASK","creating tasks");
+		xTaskCreate(&buttonsHandler, "buttonsHandler", 2048, NULL, 5, NULL);
+		ESP_LOGI("TASK","after task 1");
 	} else {
 		ESP_LOGE("OLED", "oled init failed");
 	}
-	*/
-	ESP_LOGI("GPIO", "first run");
-	//xTaskCreatePinnedToCore(&test1_task, "test1task", 2048, NULL, 5, NULL, 1);
-	test1_task(NULL);
-
 }
+
 #ifdef __cplusplus
 }
 #endif

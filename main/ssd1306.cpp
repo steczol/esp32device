@@ -64,8 +64,9 @@ void OLED::data(uint8_t adress, uint8_t d) {
 }
 
 bool OLED::init() {
-	term();
-
+	ESP_LOGI("OLED", "beginning of init()");
+	//term();
+	ESP_LOGI("OLED", "after term()");
 	switch (type) {
 	case SSD1306_128x64:
 		buffer = (uint8_t*) malloc(1024); // 128 * 64 / 8
@@ -158,9 +159,13 @@ bool OLED::init() {
 }
 
 void OLED::term() {
+	ESP_LOGI("OLED", "beginning of term");
 	command(address, 0xae); // SSD_DISPLAYOFF
+	ESP_LOGI("OLED", "SSD_DISPLAYOFF");
 	command(address, 0x8d); // SSD1306_CHARGEPUMP
+	ESP_LOGI("OLED", "SSD1306_CHARGEPUMP");
 	command(address, 0x10); // Charge pump off
+	ESP_LOGI("OLED", "Charge pump off");
 
 	if (buffer)
 		free(buffer);

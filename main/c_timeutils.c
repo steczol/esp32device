@@ -82,6 +82,3 @@ uint32_t timeval_durationBeforeNow(struct timeval *a){
 	}
 	return timeval_toMsecs(&delta);
 } // timeval_durationBeforeNow
-
-
-
